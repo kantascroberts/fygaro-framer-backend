@@ -1,42 +1,34 @@
+// /api/create-payment.js
+
+function toMoney2(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return null;
+  return n.toFixed(2);
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const { amount, description } = req.body;
+  const base = process.env.FYGARO_LINK_BASE; // This must be the Fygaro Link checkout URL
+  if (!base) return res.status(500).json({ error: "Missing FYGARO_LINK_BASE" });
 
-    if (!amount) {
-      return res.status(400).json({ error: "Amount is required" });
-    }
+  const { amount, description } = req.body || {};
+  const amt = toMoney2(amount);
+  if (!amt) return res.status(400).json({ error: "Invalid amount" });
 
-    const response = await fetch(process.env.FYGARO_LINK_BASE, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.FYGARO_SECRET}`,
-      },
-      body: JSON.stringify({
-        amount: amount,
-        currency: "XCD",
-        description: description || "Framer payment",
-        return_url: process.env.RETURN_URL,
-      }),
-    });
+  // Your own tracking ID for later confirmation
+  const client_reference = `order_${Date.now()}`;
 
-    const data = await response.json();
+  // Build URL per Fygaro Links Integration Option 1
+  const url = new URL(base);
+  url.searchParams.set("amount", amt);
+  url.searchParams.set("client_note", description || "Framer payment");
+  url.searchParams.set("client_reference", client_reference);
 
-    if (!response.ok) {
-      return res.status(500).json({
-        error: "Fygaro error",
-        details: data,
-      });
-    }
-
-    res.status(200).json({
-      paymentUrl: data.payment_url,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  return res.status(200).json({
+    paymentUrl: url.toString(),
+    client_reference
+  });
 }
